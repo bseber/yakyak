@@ -6,6 +6,8 @@ getProxiedName, fixlink, isImg, getImageUrl}  = require '../util'
 
 CUTOFF = 5 * 60 * 1000 * 1000 # 5 mins
 
+YOUTUBE_APIKEY = ''
+
 # this helps fixing houts proxied with things like hangupsbot
 # the format of proxied messages are
 # and here we put entities in the entity db for
@@ -210,6 +212,18 @@ formatters = [
                         node.text
                     if node.img
                         img src: node.img
+    # youtube preview
+        (seg) ->
+            href = seg?.text
+            if /https?:\/\/www.youtube.com\/watch/.test href
+                data = preloadYoutube href
+                if preload data?.imageUrl
+                    div class:'youtube-container', ->
+                        a {href, onclick}, ->
+                            div ->
+                                span class:'youtube-teaser', ->
+                                    data.title.trim()
+                                img src: data.imageUrl
 ]
 
 stripProxiedColon = (txt) ->
@@ -253,6 +267,21 @@ preloadTweet = (href) ->
             later -> action 'loadedimg'
     return cache
 
+preloadYoutube = (href) ->
+    cache = preload_cache[href]
+    if not cache
+        preload_cache[href] = {}
+        videoId = (href.match /v=([\d\w]+)/)[1]
+        fetch 'https://www.googleapis.com/youtube/v3/videos?id=' + videoId + '&part=snippet&alt=json&key=' + YOUTUBE_APIKEY
+        .then (response) ->
+            response.json()
+        .then (json) ->
+            snippet = json.items[0].snippet
+            preload_cache[href].title = snippet.title
+            preload_cache[href].imageUrl = snippet.thumbnails.standard.url
+            later -> action 'loadedyoutube'
+    return cache
+
 formatAttachment = (att) ->
     console.log 'attachment', att if att.length > 0
     if att?[0]?.embed_item?.type_
@@ -278,6 +307,8 @@ handle 'loadedimg', ->
     # fix the position after redraw
     updated 'afterImg'
 
+handle 'loadedyoutube', ->
+    updated 'conv'
 
 extractProtobufStyle = (att) ->
     eitem = att?[0]?.embed_item
